@@ -36,8 +36,7 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-#define M_PI 3.14159265358979323846
-#define AI_SHAPE_4D 4
+
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -63,19 +62,11 @@ static void MX_TIM2_Init(void);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
-static ai_handle network = AI_HANDLE_NULL;
-ai_buffer ai_input[AI_SINE_MODEL_IN_NUM];
-ai_buffer ai_output[AI_SINE_MODEL_OUT_NUM];
-
-ai_float x_val = 0.0f;
-const float x_step = 0.1f;
-const float x_max = 6.28f;
-
 
 int mapPWM(float y_value) {
 	if (y_value < -1.0f) y_value = -1.0f;
 	if (y_value > 1.0f) y_value = 1.0f;
-	return (int)((y_value + 1.0f) * 127.5f); // -1→1 to 0→255
+	return (int)((y_value + 1.0f) * 127.5f); // -1a1 to 0a255
 }
 
 
@@ -89,8 +80,16 @@ int main(void)
 {
 
   /* USER CODE BEGIN 1 */
+	static ai_handle network = AI_HANDLE_NULL;
+	ai_buffer ai_input[AI_SINE_MODEL_IN_NUM];
+	ai_buffer ai_output[AI_SINE_MODEL_OUT_NUM];
+
+	ai_float x_val = 0.0f;
+	const float x_step = 0.1f;
+	const float x_max = 6.28f; // 2*pi
+
 	ai_float y_val;
-	float y;
+	//float y;
   /* USER CODE END 1 */
 
   /* MCU Configuration--------------------------------------------------------*/
@@ -118,62 +117,33 @@ int main(void)
 
   // Inicializa la red neuronal
   ai_error err;
+  // Crea la instancia del modelo
+  err = ai_sine_model_create(&network, AI_SINE_MODEL_DATA_CONFIG);
+  if (err.type != AI_ERROR_NONE) {
+      // Error al crear red
+	  char test_msg[] = "error al crear el modelo\r\n";
+	  HAL_UART_Transmit(&huart2, (uint8_t*)test_msg, strlen(test_msg), HAL_MAX_DELAY);
+      Error_Handler();
+  }
 
-  //const ai_handle acts = AI_HANDLE_NULL;
+  //activations and weights
   AI_ALIGNED(4) ai_u8 activations[AI_SINE_MODEL_DATA_ACTIVATIONS_SIZE];
   const ai_handle weights = ai_sine_model_data_weights_get();
 
-  /*
-  ai_network_params ai_params = {
-      AI_SINE_MODEL_DATA_WEIGHTS(ai_sine_model_data_weights_get()),
-      AI_SINE_MODEL_DATA_ACTIVATIONS(activations)
-  };*/
   ai_network_params ai_params = {
       AI_SINE_MODEL_DATA_WEIGHTS(weights),
       AI_SINE_MODEL_DATA_ACTIVATIONS(activations)
   };
 
-  // Crea la instancia del modelo
-  err = ai_sine_model_create(&network, AI_SINE_MODEL_DATA_CONFIG);
-  if (err.type != AI_ERROR_NONE) {
-      // Error al crear red
-	  char test_msg[] = "error model create\r\n";
-	  		HAL_UART_Transmit(&huart2, (uint8_t*)test_msg, strlen(test_msg), HAL_MAX_DELAY);
-      Error_Handler();
-  }
-
-  // Inicializa el modelo con los parámetros
+  // Inicializa el modelo con los parametros
   if (!ai_sine_model_init(network, &ai_params)) {
-      // Error al inicializar red
+	  // notificar error
 	  char test_msg[] = "error model init\r\n";
-	  		HAL_UART_Transmit(&huart2, (uint8_t*)test_msg, strlen(test_msg), HAL_MAX_DELAY);
-
-	  		char buffer[64];
-	  		sprintf(buffer, "act_size: %d\r\n", AI_SINE_MODEL_DATA_ACTIVATIONS_SIZE);
-	  		HAL_UART_Transmit(&huart2, (uint8_t*)buffer, strlen(buffer), HAL_MAX_DELAY);
+	  HAL_UART_Transmit(&huart2, (uint8_t*)test_msg, strlen(test_msg), HAL_MAX_DELAY);
       Error_Handler();
   }
 
-  // Configura buffers de entrada y salida
-  //ai_input[0].data = AI_HANDLE_PTR(NULL);  // Se asigna luego antes del run
-
-  //ai_output[0].data = AI_HANDLE_PTR(NULL);
-
-  ai_input[0].data = AI_HANDLE_PTR(&x_val);
-
-  ai_output[0].data = AI_HANDLE_PTR(&y_val);
-
-  ai_network_report report;
-  ai_sine_model_get_report(network, &report);
-  char buffer[100];
-  sprintf(buffer, "inputs: %d, outputs: %d\r\n", report.n_inputs, report.n_outputs);
-  HAL_UART_Transmit(&huart2, (uint8_t*)buffer, strlen(buffer), HAL_MAX_DELAY);
-
-  char buf[64];
-  uint8_t *w = (uint8_t*)weights;
-  sprintf(buf, "First weights: %02X %02X %02X\r\n", w[0], w[1], w[2]);
-  HAL_UART_Transmit(&huart2, (uint8_t*)buf, strlen(buf), HAL_MAX_DELAY);
-
+  // Configuracion de buffers de entrada y salida
   static ai_shape_dimension input_shape_dims[4] = {1, 1, 1, 1};
   static ai_shape_dimension output_shape_dims[4] = {1, 1, 1, 1};
 
@@ -207,32 +177,31 @@ int main(void)
   /* USER CODE BEGIN WHILE */
   while (1)
   {
-		// 1. Prepara input para la red
-	  //for input buffer
-		((ai_float*) ai_input[0].data)[0] = x_val;
+		// 1. ya se inicializó ai_float x_val = 0.0f;
 
-		// 2. Ejecuta inferencia
+		// 2. Ejecutar la inferencia
 		ai_sine_model_run(network, ai_input, ai_output);
 
 		// 3. Lee resultado
-		y = ((ai_float*) ai_output[0].data)[0];
-		// For output buffer
+		//ya esta el valor en y_val
 
+		// debuggeo de valores de x e y por uart.
 		char msg_debug[100];
-		snprintf(msg_debug, sizeof(msg_debug), "x_val: %.3f, y_val: %.3f\r\n", x_val, y);
+		snprintf(msg_debug, sizeof(msg_debug), "x_val: %.3f, y_val: %.3f\r\n", x_val, y_val);
 		HAL_UART_Transmit(&huart2, (uint8_t*) msg_debug, strlen(msg_debug), HAL_MAX_DELAY);
 
+		// 4. Adaptar la señal para la PWM
+		int pwm_val = mapPWM(y_val);
 
-		int pwm_val = mapPWM(y);
-
+		// debuggeao de valores de la PWM por uart
 		char msg_debug2[100];
 		snprintf(msg_debug2, sizeof(msg_debug2), "pwm_val: %d\r\n", pwm_val);
 		HAL_UART_Transmit(&huart2, (uint8_t*) msg_debug2, strlen(msg_debug2), HAL_MAX_DELAY);
 
-		// 4. Aplica al LED
+		// 4. Aplicar al LED
 		__HAL_TIM_SET_COMPARE(&htim2, TIM_CHANNEL_1, pwm_val);
 
-		// 5. Avanza el input
+		// 5. Avanzar el input
 		x_val += x_step;
 		if (x_val > x_max)
 			x_val = 0.0f;
